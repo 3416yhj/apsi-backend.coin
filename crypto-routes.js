@@ -1,47 +1,61 @@
-// routes/crypto-routes.js
+// routes/crypto-routes.js (환경 변수 지원 추가)
 const axios = require('axios');
 const NodeCache = require('node-cache');
 
-// 5분 동안 캐시 유지
-const cryptoCache = new NodeCache({ stdTTL: 300 });
-
-// CoinGecko API에 요청하는 함수
-async function fetchFromCoinGecko(endpoint, params) {
-  const queryString = new URLSearchParams(params).toString();
-  const url = `https://api.coingecko.com/api/v3/${endpoint}${queryString ? '?' + queryString : ''}`;
-  
-  // 캐시 확인
-  const cacheKey = url;
-  const cachedResponse = cryptoCache.get(cacheKey);
-  
-  if (cachedResponse) {
-    console.log(`캐시된 응답 제공: ${url}`);
-    return cachedResponse;
-  }
-  
-  console.log(`CoinGecko에서 데이터 가져오는 중: ${url}`);
-  
-  // API 요청 제한 방지를 위한 지연
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    
-    // 응답 캐싱
-    cryptoCache.set(cacheKey, response.data);
-    return response.data;
-  } catch (error) {
-    console.error('CoinGecko API 오류:', error.message);
-    throw error;
-  }
-}
-
 // Express 라우터에 엔드포인트 추가
-module.exports = function(app) {
+module.exports = function(app, config) {
+  // 설정 값 가져오기
+  const {
+    coingeckoApiUrl = 'https://api.coingecko.com/api/v3',
+    coingeckoApiKey = '',
+    cacheTtl = 300
+  } = config || {};
+  
+  // 캐시 설정
+  const cryptoCache = new NodeCache({ stdTTL: cacheTtl });
+  
+  console.log(`암호화폐 라우트 설정: API URL=${coingeckoApiUrl}, 캐시 TTL=${cacheTtl}초`);
+  
+  // CoinGecko API에 요청하는 함수
+  async function fetchFromCoinGecko(endpoint, params) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = `${coingeckoApiUrl}/${endpoint}${queryString ? '?' + queryString : ''}`;
+    
+    // 캐시 확인
+    const cacheKey = url;
+    const cachedResponse = cryptoCache.get(cacheKey);
+    
+    if (cachedResponse) {
+      console.log(`캐시된 응답 제공: ${url}`);
+      return cachedResponse;
+    }
+    
+    console.log(`CoinGecko에서 데이터 가져오는 중: ${url}`);
+    
+    // API 요청 제한 방지를 위한 지연
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    try {
+      const headers = {
+        'Accept': 'application/json',
+      };
+      
+      // API 키가 있다면 헤더에 추가
+      if (coingeckoApiKey) {
+        headers['x-cg-api-key'] = coingeckoApiKey;
+      }
+      
+      const response = await axios.get(url, { headers });
+      
+      // 응답 캐싱
+      cryptoCache.set(cacheKey, response.data);
+      return response.data;
+    } catch (error) {
+      console.error('CoinGecko API 오류:', error.message);
+      throw error;
+    }
+  }
+
   // 암호화폐 차트 데이터
   app.get('/api/crypto/chart/:coinId', async (req, res) => {
     try {
